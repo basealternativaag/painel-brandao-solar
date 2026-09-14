@@ -106,6 +106,9 @@ function emptyRequest() {
     endereco: "",
     bairro: "",
     referencia: "",
+    proposalValue: "",
+    responsavelLocal: "",
+    locationLink: "",
     dataDesejada: tomorrowISO(),
     janelaDesejada: WINDOWS[0],
     observacoes: "",
@@ -167,6 +170,9 @@ function toDbRequestInsert(form) {
     endereco: form.endereco,
     bairro: form.bairro,
     referencia: form.referencia || null,
+    proposal_value: form.proposalValue || null,
+    responsavel_local: form.responsavelLocal || null,
+    location_link: form.locationLink || null,
     data_desejada: form.dataDesejada || null,
     janela_desejada: form.janelaDesejada,
     observacoes: form.observacoes || null,
@@ -185,6 +191,9 @@ function fromDbRequest(row) {
     endereco: row.endereco,
     bairro: row.bairro,
     referencia: row.referencia || "",
+    proposalValue: row.proposal_value || "",
+    responsavelLocal: row.responsavel_local || "",
+    locationLink: row.location_link || "",
     dataDesejada: row.data_desejada,
     janelaDesejada: row.janela_desejada,
     observacoes: row.observacoes || "",
@@ -576,6 +585,10 @@ function IntakeView({ onBack }) {
         </select>
       </Field>
 
+      <Field label="Proposta (R$)">
+        <input value={form.proposalValue} onChange={(e) => set("proposalValue", e.target.value)} placeholder="Se já tiver um valor" style={inputStyle} />
+      </Field>
+
       <Field label="Seu nome (quem está solicitando) *">
         <input value={form.solicitante} onChange={(e) => set("solicitante", e.target.value)} style={inputStyle} />
       </Field>
@@ -608,6 +621,12 @@ function IntakeView({ onBack }) {
       </Field>
       <Field label="Ponto de referência">
         <input value={form.referencia} onChange={(e) => set("referencia", e.target.value)} style={inputStyle} />
+      </Field>
+      <Field label="Responsável no local (se não for o cliente)">
+        <input value={form.responsavelLocal} onChange={(e) => set("responsavelLocal", e.target.value)} style={inputStyle} />
+      </Field>
+      <Field label="Link de localização (Maps/Waze)">
+        <input value={form.locationLink} onChange={(e) => set("locationLink", e.target.value)} placeholder="Cole aqui o link, se tiver" style={inputStyle} />
       </Field>
 
       <div style={{ fontSize: "12px", fontWeight: 700, color: COLORS.darkGreenText, margin: "14px 0 4px" }}>
@@ -848,6 +867,9 @@ function Backoffice({ onExit }) {
       address: request.endereco,
       bairro: request.bairro,
       reference: request.referencia,
+      proposalValue: request.proposalValue || "",
+      responsavelLocal: request.responsavelLocal || "",
+      locationLink: request.locationLink || "",
       canal: CANAIS.includes(request.canal) ? request.canal : CANAIS[0],
       visitType: SERVICE_TYPES.includes(request.tipoServico) ? request.tipoServico : SERVICE_TYPES[0],
     });
@@ -2173,20 +2195,35 @@ function VisitFormModal({ formOpen, setFormOpen, form, setForm, extraLabel, setE
           {formOpen.existing ? "Editar visita" : "Nova visita"}
         </div>
         <div style={{ fontSize: "12px", color: COLORS.muted, marginBottom: "14px" }}>
-          {formOpen.tech} · {formOpen.window === "Extra" ? "Visita extra" : formOpen.window}
+          {formOpen.window === "Extra" ? "Visita extra" : formOpen.window}
         </div>
 
-        <Field label="Data da visita">
-          <input
-            type="date"
-            value={formOpen.date}
-            onChange={(e) => setFormOpen((f) => ({ ...f, date: e.target.value }))}
-            style={inputStyle}
-          />
-        </Field>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <Field label="Técnico responsável" style={{ flex: 1 }}>
+            <select
+              value={formOpen.tech}
+              onChange={(e) => setFormOpen((f) => ({ ...f, tech: e.target.value }))}
+              style={inputStyle}
+            >
+              {TECHS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Data da visita" style={{ flex: 1 }}>
+            <input
+              type="date"
+              value={formOpen.date}
+              onChange={(e) => setFormOpen((f) => ({ ...f, date: e.target.value }))}
+              style={inputStyle}
+            />
+          </Field>
+        </div>
         {formOpen.existing && (
           <div style={{ fontSize: "11.5px", color: COLORS.muted, marginTop: "-6px", marginBottom: "10px" }}>
-            Mudar a data aqui move essa visita para o dia escolhido.
+            Mudar o técnico ou a data aqui reatribui/move essa visita.
           </div>
         )}
 
