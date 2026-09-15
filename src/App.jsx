@@ -41,7 +41,7 @@ const SERVICE_TYPES = [
   "Outro",
 ];
 
-const CANAIS = ["Consultor / Indicação", "Lead V4", "Visita Externa (PJ)", "Outro"];
+const CANAIS = ["Cliente (contato direto)", "Consultor / Indicação", "Lead V4", "Visita Externa (PJ)", "Outro"];
 const STATUSES = ["Agendado", "Confirmado", "Em rota", "Realizado", "Não realizada", "Reagendado"];
 const STATUS_COLOR = {
   Agendado: COLORS.muted,
@@ -52,7 +52,6 @@ const STATUS_COLOR = {
   Reagendado: COLORS.danger,
 };
 
-const BACKOFFICE_CODE = "SOLAR2026";
 
 function pad(n) {
   return String(n).padStart(2, "0");
@@ -91,7 +90,7 @@ function emptyForm() {
     reference: "",
     responsavelLocal: "",
     locationLink: "",
-    canal: CANAIS[0],
+    canal: "Consultor / Indicação",
     status: "Agendado",
   };
 }
@@ -100,12 +99,13 @@ function emptyRequest() {
   return {
     tipoServico: SERVICE_TYPES[0],
     solicitante: "",
-    canal: CANAIS[0],
+    canal: "Cliente (contato direto)",
     nome: "",
     telefone: "",
     endereco: "",
     bairro: "",
     referencia: "",
+    valorContaAtual: "",
     proposalValue: "",
     responsavelLocal: "",
     locationLink: "",
@@ -170,6 +170,7 @@ function toDbRequestInsert(form) {
     endereco: form.endereco,
     bairro: form.bairro,
     referencia: form.referencia || null,
+    valor_conta_atual: form.valorContaAtual || null,
     proposal_value: form.proposalValue || null,
     responsavel_local: form.responsavelLocal || null,
     location_link: form.locationLink || null,
@@ -191,6 +192,7 @@ function fromDbRequest(row) {
     endereco: row.endereco,
     bairro: row.bairro,
     referencia: row.referencia || "",
+    valorContaAtual: row.valor_conta_atual || "",
     proposalValue: row.proposal_value || "",
     responsavelLocal: row.responsavel_local || "",
     locationLink: row.location_link || "",
@@ -200,6 +202,63 @@ function fromDbRequest(row) {
     status: row.status,
     createdAt: row.created_at,
   };
+}
+
+/* ============================= CALCULADORA DE SIMULAÇÃO ============================= */
+
+const PRICE_TABLE = [
+  [400, 12000],
+  [500, 13500],
+  [600, 16200],
+  [700, 18900],
+  [800, 18500],
+  [900, 20000],
+  [1000, 21500],
+  [1500, 34500],
+  [2000, 45000],
+  [3000, 68000],
+  [3500, 78500],
+  [4000, 89800],
+  [4500, 101000],
+  [5000, 112000],
+  [5500, 123400],
+  [6000, 134500],
+  [6500, 145800],
+  [7000, 157000],
+  [7500, 168200],
+  [8000, 180000],
+  [8500, 191000],
+  [9000, 202000],
+  [9500, 213000],
+  [10000, 224300],
+];
+
+function estimateSystemValue(contaAtual) {
+  const v = Number(contaAtual);
+  if (!v || v <= 0) return null;
+  const first = PRICE_TABLE[0];
+  const last = PRICE_TABLE[PRICE_TABLE.length - 1];
+  if (v < first[0]) return { value: null, belowMin: true };
+  if (v >= last[0]) {
+    const [x1, y1] = PRICE_TABLE[PRICE_TABLE.length - 2];
+    const [x2, y2] = last;
+    if (v === x2) return { value: y2, aboveMax: false };
+    const slope = (y2 - y1) / (x2 - x1);
+    return { value: Math.round(y2 + slope * (v - x2)), aboveMax: true };
+  }
+  for (let i = 0; i < PRICE_TABLE.length - 1; i++) {
+    const [x1, y1] = PRICE_TABLE[i];
+    const [x2, y2] = PRICE_TABLE[i + 1];
+    if (v >= x1 && v <= x2) {
+      const ratio = (v - x1) / (x2 - x1);
+      return { value: Math.round(y1 + ratio * (y2 - y1)), belowMin: false, aboveMax: false };
+    }
+  }
+  return null;
+}
+
+function formatBRL(n) {
+  return n.toLocaleString("pt-BR");
 }
 
 function buildSlotLines(windowLabel, emoji, visit) {
@@ -337,19 +396,39 @@ function IconTrash() {
 }
 
 export default function PainelBrandaoSolar() {
-  const [role, setRole] = useState(null); // null | 'intake' | 'backoffice'
-  const [unlocked, setUnlocked] = useState(false);
+  const [role, setRole] = useState("intake"); // 'intake' | 'backoffice'
+  const [session, setSession] = useState(undefined); // undefined = carregando, null = deslogado, objeto = logado
 
-  if (role === null) {
-    return <RoleChooser onChoose={setRole} />;
-  }
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
   if (role === "intake") {
-    return <IntakeView onBack={() => setRole(null)} />;
+    return <IntakeView onOpenBackoffice={() => setRole("backoffice")} />;
   }
-  if (!unlocked) {
-    return <AccessGate onBack={() => setRole(null)} onUnlock={() => setUnlocked(true)} />;
+  if (session === undefined) {
+    return (
+      <Shell maxWidth="380px">
+        <BrandHeader subtitle="Área interna" />
+        <div style={{ fontSize: "13px", color: COLORS.muted, marginTop: "10px" }}>Carregando…</div>
+      </Shell>
+    );
   }
-  return <Backoffice onExit={() => { setRole(null); setUnlocked(false); }} />;
+  if (!session) {
+    return <LoginGate onBack={() => setRole("intake")} />;
+  }
+  return (
+    <Backoffice
+      onExit={async () => {
+        await supabase.auth.signOut();
+        setRole("intake");
+      }}
+    />
+  );
 }
 
 function Shell({ children, maxWidth }) {
@@ -402,89 +481,62 @@ function BrandHeader({ subtitle }) {
   );
 }
 
-function RoleChooser({ onChoose }) {
-  return (
-    <Shell maxWidth="480px">
-      <BrandHeader subtitle="Agenda & Solicitações" />
-      <div style={{ fontSize: "13px", color: COLORS.muted, margin: "10px 0 24px" }}>
-        Escolha como você quer entrar.
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        <button
-          onClick={() => onChoose("intake")}
-          style={{
-            textAlign: "left",
-            border: `1px solid ${COLORS.border}`,
-            background: "#fff",
-            borderRadius: "12px",
-            padding: "16px",
-            cursor: "pointer",
-            fontFamily: FONT_BODY,
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: "15px", color: COLORS.darkGreenText, marginBottom: "4px" }}>
-            Quero solicitar uma visita
-          </div>
-          <div style={{ fontSize: "12.5px", color: COLORS.muted }}>
-            Consultor, indicação ou qualquer interessado — preencha os dados do cliente e o serviço desejado.
-          </div>
-        </button>
-        <button
-          onClick={() => onChoose("backoffice")}
-          style={{
-            textAlign: "left",
-            border: `1px solid ${COLORS.border}`,
-            background: "#fff",
-            borderRadius: "12px",
-            padding: "16px",
-            cursor: "pointer",
-            fontFamily: FONT_BODY,
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: "15px", color: COLORS.darkGreenText, marginBottom: "4px" }}>
-            Área interna (Gestão)
-          </div>
-          <div style={{ fontSize: "12.5px", color: COLORS.muted }}>
-            Aceitar solicitações, definir técnico, montar a agenda e enviar os resumos.
-          </div>
-        </button>
-      </div>
-    </Shell>
-  );
-}
+function LoginGate({ onBack }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-function AccessGate({ onBack, onUnlock }) {
-  const [code, setCode] = useState("");
-  const [error, setError] = useState(false);
+  async function handleLogin() {
+    if (!email.trim() || !password) {
+      setError("Preencha e-mail e senha.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (authError) {
+      setError("E-mail ou senha incorretos.");
+    }
+    setLoading(false);
+  }
+
   return (
     <Shell maxWidth="380px">
       <BrandHeader subtitle="Área interna" />
       <div style={{ fontSize: "13px", color: COLORS.muted, margin: "10px 0 18px" }}>
-        Código de acesso da equipe interna. (Isso é só uma barreira simples contra acesso casual — não é uma
-        senha de segurança real.)
+        Entre com o e-mail e senha da equipe de gestão.
       </div>
-      <input
-        type="password"
-        value={code}
-        onChange={(e) => {
-          setCode(e.target.value);
-          setError(false);
-        }}
-        placeholder="Código de acesso"
-        style={inputStyle}
-      />
-      {error && (
-        <div style={{ color: COLORS.danger, fontSize: "12px", marginTop: "6px" }}>Código incorreto.</div>
-      )}
-      <div style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+      <Field label="E-mail">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setError("");
+          }}
+          style={inputStyle}
+        />
+      </Field>
+      <Field label="Senha">
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            setError("");
+          }}
+          onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+          style={inputStyle}
+        />
+      </Field>
+      {error && <div style={{ color: COLORS.danger, fontSize: "12px", marginBottom: "8px" }}>{error}</div>}
+      <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
         <button onClick={onBack} style={secondaryBtnStyle}>
           ← Voltar
         </button>
-        <button
-          onClick={() => (code === BACKOFFICE_CODE ? onUnlock() : setError(true))}
-          style={primaryBtnStyle}
-        >
-          Entrar
+        <button onClick={handleLogin} disabled={loading} style={primaryBtnStyle}>
+          {loading ? "Entrando…" : "Entrar"}
         </button>
       </div>
     </Shell>
@@ -493,7 +545,7 @@ function AccessGate({ onBack, onUnlock }) {
 
 /* ============================= INTAKE (public form) ============================= */
 
-function IntakeView({ onBack }) {
+function IntakeView({ onOpenBackoffice }) {
   const [form, setForm] = useState(emptyRequest());
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -523,6 +575,8 @@ function IntakeView({ onBack }) {
     }
     setSaving(false);
   }
+
+  const estimate = estimateSystemValue(form.valorContaAtual);
 
   if (submitted) {
     return (
@@ -566,14 +620,61 @@ function IntakeView({ onBack }) {
 
   return (
     <Shell maxWidth="440px">
-      <button onClick={onBack} style={{ ...linkBtnStyle, marginBottom: "10px" }}>
-        ← Voltar
-      </button>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "-6px" }}>
+        <button onClick={onOpenBackoffice} style={{ ...linkBtnStyle, fontSize: "12px" }}>
+          Área interna (Gestão)
+        </button>
+      </div>
       <BrandHeader subtitle="Solicitar Visita" />
       <div style={{ fontSize: "13px", color: COLORS.muted, margin: "10px 0 20px" }}>
         Preencha os dados do cliente e o serviço desejado. A Sara confirma o técnico e o horário e avisa no
         grupo.
       </div>
+
+      <div
+        style={{
+          background: "#F1F5EA",
+          border: `1px solid ${COLORS.lightGreen}`,
+          borderRadius: "12px",
+          padding: "14px",
+          marginBottom: "22px",
+        }}
+      >
+        <div style={{ fontFamily: FONT_HEAD, fontWeight: 700, fontSize: "15px", color: COLORS.darkGreenText, marginBottom: "4px" }}>
+          ☀️ Simule sua economia
+        </div>
+        <div style={{ fontSize: "12px", color: COLORS.muted, marginBottom: "10px" }}>
+          Digite o valor da sua conta de luz atual e veja uma estimativa do investimento.
+        </div>
+        <Field label="Valor da conta de luz hoje (R$)">
+          <input
+            type="number"
+            inputMode="decimal"
+            value={form.valorContaAtual}
+            onChange={(e) => set("valorContaAtual", e.target.value)}
+            placeholder="Ex: 700"
+            style={inputStyle}
+          />
+        </Field>
+        {form.valorContaAtual && estimate && estimate.belowMin && (
+          <div style={{ fontSize: "12.5px", color: COLORS.muted, marginTop: "6px" }}>
+            Pra contas abaixo de R$ 400, um consultor monta uma simulação sob medida pra você.
+          </div>
+        )}
+        {form.valorContaAtual && estimate && estimate.value != null && (
+          <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: `1px solid ${COLORS.lightGreen}` }}>
+            <div style={{ fontSize: "12px", color: COLORS.muted }}>Investimento estimado do sistema</div>
+            <div style={{ fontFamily: FONT_HEAD, fontWeight: 700, fontSize: "22px", color: COLORS.darkGreenText }}>
+              R$ {formatBRL(estimate.value)}
+              {estimate.aboveMax ? "+" : ""}
+            </div>
+            <div style={{ fontSize: "11px", color: COLORS.muted, marginTop: "2px", fontStyle: "italic" }}>
+              Simulação automática — o valor final é confirmado após a visita técnica.
+            </div>
+          </div>
+        )}
+      </div>
+
 
       <Field label="Tipo de serviço *">
         <select value={form.tipoServico} onChange={(e) => set("tipoServico", e.target.value)} style={inputStyle}>
