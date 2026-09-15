@@ -556,8 +556,8 @@ function IntakeView({ onOpenBackoffice }) {
   }
 
   async function submit() {
-    if (!form.solicitante.trim() || !form.nome.trim() || !form.telefone.trim() || !form.endereco.trim() || !form.bairro.trim()) {
-      setError("Preencha seu nome, o nome do cliente, telefone, endereço e bairro antes de enviar.");
+    if (!form.nome.trim() || !form.telefone.trim() || !form.endereco.trim() || !form.bairro.trim()) {
+      setError("Preencha o nome do cliente, telefone, endereço e bairro antes de enviar.");
       return;
     }
     setError("");
@@ -690,8 +690,13 @@ function IntakeView({ onOpenBackoffice }) {
         <input value={form.proposalValue} onChange={(e) => set("proposalValue", e.target.value)} placeholder="Se já tiver um valor" style={inputStyle} />
       </Field>
 
-      <Field label="Seu nome (quem está solicitando) *">
-        <input value={form.solicitante} onChange={(e) => set("solicitante", e.target.value)} style={inputStyle} />
+      <Field label="Quem te indicou / te enviou esse link?">
+        <input
+          value={form.solicitante}
+          onChange={(e) => set("solicitante", e.target.value)}
+          placeholder="Nome do consultor, se foi indicação (deixe em branco se não teve indicação)"
+          style={inputStyle}
+        />
       </Field>
 
       <Field label="Canal">
@@ -1193,7 +1198,7 @@ function SolicitacoesTab({ requests, requestsLoading, startScheduling, schedulin
                   <div style={{ fontSize: "12px", color: COLORS.muted, marginTop: "3px" }}>
                     Desejado: {formatDateLabel(r.dataDesejada)} · {r.janelaDesejada}
                   </div>
-                  <div style={{ fontSize: "12px", color: COLORS.muted }}>Solicitado por: {r.solicitante}</div>
+                  <div style={{ fontSize: "12px", color: COLORS.muted }}>Indicado por: {r.solicitante || "—"}</div>
                   {r.observacoes ? (
                     <div style={{ fontSize: "12px", color: COLORS.muted, marginTop: "3px", fontStyle: "italic" }}>
                       "{r.observacoes}"
