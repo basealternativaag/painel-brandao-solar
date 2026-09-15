@@ -31,8 +31,8 @@ const WINDOW_EMOJI = {
 };
 
 const SERVICE_TYPES = [
-  "Visita comercial",
-  "Visita técnica",
+  "1a visita (comercial)",
+  "2a visita (técnico)",
   "Instalação completa solar",
   "Lavagem de placas",
   "Manutenção / Assistência técnica",
